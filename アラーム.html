@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多機能時計アプリ</title>
+    <!-- Tailwind CSSを読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- アイコンのためにLucide Iconsを読み込み -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa; /* 明るい背景 */
+        }
+        .container-shadow {
+            /* シンプルな影色（黒のみ）に変更 */
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); 
+        }
+        .time-display {
+            font-variant-numeric: tabular-nums; /* 数字の幅を揃える */
+            font-weight: 700;
+        }
+        /* アラーム鳴動時のアニメーション */
+        @keyframes alarm-ring {
+            0% { background-color: #fca5a5; transform: scale(1); } /* 薄い赤 */
+            50% { background-color: #ef4444; transform: scale(1.02); } /* 濃い赤 */
+            100% { background-color: #fca5a5; transform: scale(1); }
+        }
+        .alarm-ringing {
+            animation: alarm-ring 0.5s infinite alternate;
+        }
+
+        /* ファイル入力のカスタマイズ (Tailwindでは限界があるためカスタムCSSを使用) */
+        .custom-file-input::-webkit-file-upload-button {
+            visibility: hidden;
+        }
+        .custom-file-input::before {
+            content: 'ファイルを選択';
+            display: inline-block;
+            background: #d1d5db; /* bg-gray-300 */
+            color: #1f2937; /* text-gray-800 */
+            border-radius: 9999px;
+            padding: 0.5rem 1rem;
+            outline: none;
+            white-space: nowrap;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 1rem;
+            transition: all 0.2s;
+        }
+        .custom-file-input:hover::before {
+            background: #e5e7eb; /* bg-gray-200 */
+        }
+        .custom-file-input:active::before {
+            background: #9ca3af; /* bg-gray-400 */
+        }
+        .file-status-text {
+            /* ファイル名が長すぎる場合の対応 */
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- メインコンテナ -->
+    <div id="app-container" class="w-full max-w-lg bg-white rounded-2xl p-6 md:p-10 text-gray-950 container-shadow transition-all duration-500">
+        
+        <!-- タブナビゲーション (アクティブタブのアンダーラインと文字色も黒に変更) -->
+        <div class="flex border-b border-gray-300 mb-6">
+            <button id="tab-clock" class="tab-button flex-1 py-3 text-sm font-medium border-b-2 border-gray-950 text-gray-950 transition-colors duration-200" data-target="clock-view">
+                <span class="md:hidden">⏱️</span><span class="hidden md:inline">時計</span>
+            </button>
+            <button id="tab-alarm" class="tab-button flex-1 py-3 text-sm font-medium border-b-2 border-transparent text-gray-700 hover:text-gray-950 transition-colors duration-200" data-target="alarm-view">
+                <span class="md:hidden">🚨</span><span class="hidden md:inline">アラーム</span>
+            </button>
+            <button id="tab-stopwatch" class="tab-button flex-1 py-3 text-sm font-medium border-b-2 border-transparent text-gray-700 hover:text-gray-950 transition-colors duration-200" data-target="stopwatch-view">
+                <span class="md:hidden">⏳</span><span class="hidden md:inline">ストップウォッチ</span>
+            </button>
+            <button id="tab-timer" class="tab-button flex-1 py-3 text-sm font-medium border-b-2 border-transparent text-gray-700 hover:text-gray-950 transition-colors duration-200" data-target="timer-view">
+                <span class="md:hidden">⏲️</span><span class="hidden md:inline">タイマー</span>
+            </button>
+        </div>
+
+        <!-- 時計ビュー -->
+        <div id="clock-view" class="view">
+            <h2 class="text-xl font-semibold mb-4 text-center text-gray-950">現在の時刻</h2>
+            <div id="current-time" class="time-display text-7xl md:text-8xl text-center mb-2 text-gray-950">00:00:00</div>
+            <div id="current-date" class="text-lg text-center text-gray-700">YYYY年M月D日 (曜日)</div>
+        </div>
+
+        <!-- アラームビュー -->
+        <div id="alarm-view" class="view hidden">
+            <h2 class="text-xl font-semibold mb-6 text-center text-gray-950">アラーム設定</h2>
+            
+            <div class="flex justify-center mb-6 space-x-4">
+                <input type="time" id="alarm-time-input" class="bg-gray-100 text-gray-950 p-3 rounded-lg text-2xl border border-gray-300 focus:ring-gray-950 focus:border-gray-950" value="07:00">
+                <!-- ボタンの色は機能性を保つため残します -->
+                <button id="set-alarm-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105">
+                    設定
+                </button>
+            </div>
+            
+            <!-- カスタム音源入力欄 -->
+            <div class="mb-6 px-4">
+                <label for="alarm-audio-file" class="block text-sm font-medium text-gray-700 mb-2">カスタム音源 (MP3/WAV)</label>
+                <input type="file" id="alarm-audio-file" accept="audio/mp3, audio/wav, audio/ogg" class="w-full text-sm text-gray-700 custom-file-input">
+                <span id="alarm-file-status" class="text-xs mt-1 text-gray-700 file-status-text">未設定: デフォルト音が使用されます。</span>
+            </div>
+
+            <div id="alarm-status" class="text-center text-red-600 text-sm mb-4"></div>
+            
+            <div class="bg-gray-100 p-4 rounded-lg">
+                <h3 class="font-medium text-gray-950 mb-2">設定済みアラーム</h3>
+                <ul id="alarms-list" class="space-y-2">
+                    <!-- アラームアイテムがここに追加されます -->
+                </ul>
+                <p id="no-alarm-message" class="text-gray-700 text-sm text-center mt-2">現在、アラームは設定されていません。</p>
+            </div>
+            
+            <!-- アラームモーダル（カスタムアラート/停止ボタン） -->
+            <div id="alarm-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+                <div id="alarm-modal-content" class="bg-red-600 text-white p-8 rounded-xl shadow-2xl w-full max-w-sm text-center alarm-ringing">
+                    <p class="text-5xl mb-4 animate-bounce">🚨</p>
+                    <h3 class="text-3xl font-bold mb-6">時間です！</h3>
+                    <button id="dismiss-alarm-btn" class="bg-white text-red-600 font-bold py-3 px-8 rounded-full text-lg hover:bg-gray-200 transition-colors">
+                        停止
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ストップウォッチビュー -->
+        <div id="stopwatch-view" class="view hidden">
+            <h2 class="text-xl font-semibold mb-4 text-center text-gray-950">ストップウォッチ</h2>
+            <div id="stopwatch-display" class="time-display text-6xl md:text-7xl text-center mb-8 text-gray-950">00:00.00</div>
+
+            <!-- コントロールボタン -->
+            <div class="flex justify-center space-x-4 mb-8">
+                <button id="sw-start-btn" class="control-btn bg-green-600 hover:bg-green-700 text-white">開始</button>
+                <button id="sw-stop-btn" class="control-btn bg-red-600 hover:bg-red-700 text-white hidden">停止</button>
+                <button id="sw-reset-btn" class="control-btn bg-gray-500 hover:bg-gray-600 text-white" disabled>リセット</button>
+                <button id="sw-lap-btn" class="control-btn bg-blue-600 hover:bg-blue-700 text-white" disabled>ラップ</button>
+            </div>
+
+            <!-- ラップタイムリスト -->
+            <div class="bg-gray-100 p-4 rounded-lg max-h-48 overflow-y-auto">
+                <h3 class="font-medium text-gray-950 mb-2">ラップタイム</h3>
+                <ul id="lap-times-list" class="divide-y divide-gray-300">
+                    <!-- ラップタイムがここに追加されます -->
+                </ul>
+                <p id="no-lap-message" class="text-gray-700 text-sm text-center mt-2">ラップタイムはありません。</p>
+            </div>
+        </div>
+
+        <!-- タイマービュー -->
+        <div id="timer-view" class="view hidden">
+            <h2 class="text-xl font-semibold mb-6 text-center text-gray-950">タイマー</h2>
+
+            <!-- タイマー設定入力 -->
+            <div class="flex justify-center items-center space-x-2 mb-8">
+                <input type="number" id="timer-h-input" placeholder="H" min="0" max="99" value="0" class="timer-input bg-gray-100 text-gray-950 p-3 rounded-lg text-2xl w-16 text-center border border-gray-300 focus:ring-gray-950 focus:border-gray-950">
+                <span class="text-3xl">:</span>
+                <input type="number" id="timer-m-input" placeholder="M" min="0" max="59" value="5" class="timer-input bg-gray-100 text-gray-950 p-3 rounded-lg text-2xl w-16 text-center border border-gray-300 focus:ring-gray-950 focus:border-gray-950">
+                <span class="text-3xl">:</span>
+                <input type="number" id="timer-s-input" placeholder="S" min="0" max="59" value="0" class="timer-input bg-gray-100 text-gray-950 p-3 rounded-lg text-2xl w-16 text-center border border-gray-300 focus:ring-gray-950 focus:border-gray-950">
+            </div>
+
+            <!-- カスタム音源入力欄 -->
+            <div class="mb-6 px-4">
+                <label for="timer-audio-file" class="block text-sm font-medium text-gray-700 mb-2">カスタム音源 (MP3/WAV)</label>
+                <input type="file" id="timer-audio-file" accept="audio/mp3, audio/wav, audio/ogg" class="w-full text-sm text-gray-700 custom-file-input">
+                <span id="timer-file-status" class="text-xs mt-1 text-gray-700 file-status-text">未設定: デフォルト音が使用されます。</span>
+            </div>
+
+            <!-- タイマー表示 (通常時も黒に変更) -->
+            <div id="timer-display" class="time-display text-6xl md:text-7xl text-center mb-8 text-gray-950">00:05:00</div>
+
+            <!-- コントロールボタン -->
+            <div class="flex justify-center space-x-4">
+                <button id="timer-start-btn" class="control-btn bg-green-600 hover:bg-green-700 text-white">開始</button>
+                <button id="timer-pause-btn" class="control-btn bg-yellow-600 hover:bg-yellow-700 text-white hidden">一時停止</button>
+                <button id="timer-resume-btn" class="control-btn bg-green-600 hover:bg-green-700 text-white hidden">再開</button>
+                <button id="timer-reset-btn" class="control-btn bg-gray-500 hover:bg-gray-600 text-white" disabled>リセット</button>
+            </div>
+
+            <!-- タイマー完了モーダル（カスタムアラート/停止ボタン） -->
+            <div id="timer-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+                <!-- モーダルのアクセントカラーは機能を保つため残します -->
+                <div class="bg-purple-600 text-white p-8 rounded-xl shadow-2xl w-full max-w-sm text-center">
+                    <p class="text-5xl mb-4 animate-ping">🔔</p>
+                    <h3 class="text-3xl font-bold mb-6">タイマー完了！</h3>
+                    <button id="dismiss-timer-btn" class="bg-white text-purple-600 font-bold py-3 px-8 rounded-full text-lg hover:bg-gray-200 transition-colors">
+                        閉じる
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tone.jsを使った効果音の読み込み (アラーム/タイマー用) -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+        
+    </div>
+
+    <script>
+        // DOM要素の取得
+        const appContainer = document.getElementById('app-container');
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const views = document.querySelectorAll('.view');
+        
+        // 時計
+        const currentTimeEl = document.getElementById('current-time');
+        const currentDateEl = document.getElementById('current-date');
+
+        // アラーム
+        const alarmTimeInput = document.getElementById('alarm-time-input');
+        const setAlarmBtn = document.getElementById('set-alarm-btn');
+        const alarmStatusEl = document.getElementById('alarm-status');
+        const alarmsList = document.getElementById('alarms-list');
+        const noAlarmMessage = document.getElementById('no-alarm-message');
+        const alarmModal = document.getElementById('alarm-modal');
+        const dismissAlarmBtn = document.getElementById('dismiss-alarm-btn');
+        const alarmModalContent = document.getElementById('alarm-modal-content');
+        const alarmAudioFileInput = document.getElementById('alarm-audio-file'); 
+        const alarmFileStatusEl = document.getElementById('alarm-file-status'); 
+        
+        let alarms = [];
+        let alarmCheckInterval;
+        const synth = new Tone.MembraneSynth().toDestination(); // デフォルトアラーム音源
+        let customAlarmPlayer = null; // カスタム音源用 Tone.Player
+        let alarmInterval = null;
+
+        // ストップウォッチ
+        const swDisplay = document.getElementById('stopwatch-display');
+        const swStartBtn = document.getElementById('sw-start-btn');
+        const swStopBtn = document.getElementById('sw-stop-btn');
+        const swResetBtn = document.getElementById('sw-reset-btn');
+        const swLapBtn = document.getElementById('sw-lap-btn');
+        const lapTimesList = document.getElementById('lap-times-list');
+        const noLapMessage = document.getElementById('no-lap-message');
+        let swInterval = null;
+        let swStartTime = 0;
+        let swElapsedTime = 0;
+        let swIsRunning = false;
+        let lapCount = 0;
+
+        // タイマー
+        const timerHInput = document.getElementById('timer-h-input');
+        const timerMInput = document.getElementById('timer-m-input');
+        const timerSInput = document.getElementById('timer-s-input');
+        const timerDisplay = document.getElementById('timer-display');
+        const timerStartBtn = document.getElementById('timer-start-btn');
+        const timerPauseBtn = document.getElementById('timer-pause-btn');
+        const timerResumeBtn = document.getElementById('timer-resume-btn');
+        const timerResetBtn = document.getElementById('timer-reset-btn');
+        const timerModal = document.getElementById('timer-modal');
+        const dismissTimerBtn = document.getElementById('dismiss-timer-btn');
+        const timerAudioFileInput = document.getElementById('timer-audio-file'); 
+        const timerFileStatusEl = document.getElementById('timer-file-status'); 
+        
+        let timerInterval = null;
+        let timerDuration = 300; // 初期値: 5分 (秒単位)
+        let timerRemaining = timerDuration;
+        let timerIsRunning = false;
+        const timerSynth = new Tone.DuoSynth().toDestination(); // デフォルトタイマー完了音源
+        let customTimerPlayer = null; // カスタム音源用 Tone.Player
+
+        // **オーディオコンテキスト開始の共通関数**
+        let audioContextStarted = false;
+        function startAudioContextOnce() {
+            if (!audioContextStarted && Tone.context.state !== 'running') {
+                Tone.start().then(() => {
+                    console.log('Tone.js AudioContext started by user interaction.');
+                    audioContextStarted = true;
+                }).catch(e => {
+                    console.error('Failed to start Tone.js AudioContext:', e);
+                });
+            }
+        }
+        
+        // **最初のクリックでオーディオコンテキストを開始**
+        document.body.addEventListener('click', startAudioContextOnce, { once: true });
+
+
+        // --- ユーティリティ関数 ---
+
+        /**
+         * 秒数を HH:MM:SS または MM:SS.ff 形式にフォーマットする
+         * @param {number} totalSeconds - 秒数
+         * @param {boolean} includeMillis - ミリ秒を含めるかどうか
+         * @returns {string} フォーマットされた時間文字列
+         */
+        function formatTime(totalSeconds, includeMillis = false) {
+            let totalMillis = Math.round(totalSeconds * 1000);
+            
+            const hours = Math.floor(totalMillis / (1000 * 60 * 60));
+            totalMillis %= (1000 * 60 * 60);
+            
+            const minutes = Math.floor(totalMillis / (1000 * 60));
+            totalMillis %= (1000 * 60);
+            
+            const seconds = Math.floor(totalMillis / 1000);
+            const millis = Math.floor((totalMillis % 1000) / 10); // 10ミリ秒単位で表示
+            
+            const h = String(hours).padStart(2, '0');
+            const m = String(minutes).padStart(2, '0');
+            const s = String(seconds).padStart(2, '0');
+            const ms = String(millis).padStart(2, '0');
+
+            if (includeMillis) {
+                // ストップウォッチ形式 (MM:SS.ff)
+                return `${m}:${s}.${ms}`;
+            } else if (hours > 0) {
+                // タイマー形式 (HH:MM:SS) - タイマーが1時間以上の場合
+                 return `${h}:${m}:${s}`;
+            } else {
+                // タイマー形式 (MM:SS) - タイマーが1時間未満の場合
+                return `${m}:${s}`;
+            }
+        }
+
+        // --- タブ切り替え機能 ---
+
+        function setActiveTab(targetId) {
+            // タブボタンのスタイル更新
+            tabButtons.forEach(btn => {
+                if (btn.dataset.target === targetId) {
+                    btn.classList.remove('border-transparent', 'text-gray-700', 'hover:text-gray-950');
+                    // アクティブなタブを黒に設定
+                    btn.classList.add('border-gray-950', 'text-gray-950');
+                } else {
+                    btn.classList.remove('border-gray-950', 'text-gray-950');
+                    btn.classList.add('border-transparent', 'text-gray-700', 'hover:text-gray-950');
+                }
+            });
+
+            // ビューの表示/非表示
+            views.forEach(view => {
+                if (view.id === targetId) {
+                    view.classList.remove('hidden');
+                } else {
+                    view.classList.add('hidden');
+                }
+            });
+        }
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                startAudioContextOnce();
+                setActiveTab(btn.dataset.target);
+            });
+        });
+
+        // --- カスタム音源機能 ---
+        
+        /**
+         * ユーザーが選択したオーディオファイルをTone.js Playerとして設定する
+         * @param {HTMLInputElement} fileInput - ファイル入力要素
+         * @param {string} type - 'alarm' or 'timer'
+         */
+        function setupCustomAudio(fileInput, type) {
+            const file = fileInput.files[0];
+            const statusEl = type === 'alarm' ? alarmFileStatusEl : timerFileStatusEl;
+            let customPlayerRef = type === 'alarm' ? customAlarmPlayer : customTimerPlayer;
+
+            // 既存のPlayerを停止・解放
+            if (customPlayerRef && customPlayerRef.state === 'started') {
+                customPlayerRef.stop();
+            }
+            if (customPlayerRef) {
+                customPlayerRef.dispose();
+            }
+
+            if (!file) {
+                // ファイルがクリアされた場合
+                customPlayerRef = null;
+                statusEl.textContent = '未設定: デフォルト音が使用されます。';
+                statusEl.classList.remove('text-blue-600', 'text-red-600', 'text-yellow-700');
+                statusEl.classList.add('text-gray-700'); // 文字色を濃いグレーに戻す
+                if (type === 'alarm') customAlarmPlayer = null;
+                else customTimerPlayer = null;
+                return;
+            }
+
+            const fileUrl = URL.createObjectURL(file);
+            statusEl.textContent = `読み込み中... (${file.name})`;
+            statusEl.classList.remove('text-blue-600', 'text-red-600', 'text-gray-700');
+            statusEl.classList.add('text-yellow-700');
+
+            // Tone.js Playerを初期化
+            const Player = new Tone.Player({
+                url: fileUrl,
+                loop: true, // アラーム/タイマーはループ再生
+                autostart: false,
+                onload: () => {
+                    statusEl.textContent = `✅ ${file.name} を設定しました。`;
+                    statusEl.classList.remove('text-yellow-700');
+                    // 読み込み完了色は統一して青系（確認色）に設定
+                    statusEl.classList.add('text-blue-600'); 
+                },
+                onerror: (e) => {
+                    statusEl.textContent = `❌ ${file.name} の読み込みに失敗しました。デフォルト音が使用されます。`;
+                    statusEl.classList.remove('text-yellow-700');
+                    statusEl.classList.add('text-red-600');
+                    Player.dispose();
+                    customPlayerRef = null; // エラー時はカスタムプレイヤーを無効化
+                    console.error("Audio loading error:", e);
+                }
+            }).toDestination();
+            
+            if (type === 'alarm') customAlarmPlayer = Player;
+            else customTimerPlayer = Player;
+        }
+
+        // イベントリスナーを設定
+        alarmAudioFileInput.addEventListener('change', () => setupCustomAudio(alarmAudioFileInput, 'alarm'));
+        timerAudioFileInput.addEventListener('change', () => setupCustomAudio(timerAudioFileInput, 'timer'));
+
+        // --- 1. 時計機能 ---
+
+        function updateClock() {
+            const now = new Date();
+            
+            // 時刻表示
+            const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+            const timeString = now.toLocaleTimeString('ja-JP', timeOptions);
+            currentTimeEl.textContent = timeString;
+
+            // 日付表示
+            const dateOptions = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' };
+            const dateString = now.toLocaleDateString('ja-JP', dateOptions).replace(/ /g, '');
+            currentDateEl.textContent = dateString;
+        }
+
+        // 1秒ごとに時計を更新
+        setInterval(updateClock, 1000);
+        updateClock(); // 初回実行
+
+        // --- 2. アラーム機能 ---
+
+        /**
+         * アラームリストをDOMに描画する
+         */
+        function renderAlarms() {
+            alarmsList.innerHTML = '';
+            alarms.sort((a, b) => a.time.localeCompare(b.time)); // 時刻順にソート
+
+            if (alarms.length === 0) {
+                noAlarmMessage.classList.remove('hidden');
+            } else {
+                noAlarmMessage.classList.add('hidden');
+                alarms.forEach((alarm, index) => {
+                    const listItem = document.createElement('li');
+                    listItem.className = 'flex items-center justify-between p-3 rounded-md bg-white shadow-sm';
+                    
+                    const timeSpan = document.createElement('span');
+                    timeSpan.textContent = alarm.time;
+                    // アラーム時刻も黒に設定
+                    timeSpan.className = 'text-2xl font-mono text-gray-950';
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-red-500 hover:text-red-400"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+                    deleteBtn.title = 'アラームを削除';
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); 
+                        deleteAlarm(index)
+                    });
+
+                    listItem.appendChild(timeSpan);
+                    listItem.appendChild(deleteBtn);
+                    alarmsList.appendChild(listItem);
+                });
+            }
+        }
+
+        /**
+         * アラームを設定する
+         */
+        setAlarmBtn.addEventListener('click', () => {
+            const time = alarmTimeInput.value;
+            if (time && !alarms.some(a => a.time === time)) {
+                alarms.push({ time: time, triggered: false });
+                alarmStatusEl.textContent = `${time}にアラームを設定しました。`;
+                alarmStatusEl.classList.add('text-blue-600'); // 確認色は青系に変更
+                alarmStatusEl.classList.remove('text-red-600');
+                renderAlarms();
+            } else if (alarms.some(a => a.time === time)) {
+                alarmStatusEl.textContent = `すでに${time}のアラームが設定されています。`;
+                alarmStatusEl.classList.add('text-red-600');
+                alarmStatusEl.classList.remove('text-blue-600');
+            } else {
+                alarmStatusEl.textContent = '有効な時刻を入力してください。';
+                alarmStatusEl.classList.add('text-red-600');
+                alarmStatusEl.classList.remove('text-blue-600');
+            }
+        });
+
+        /**
+         * アラームを削除する
+         * @param {number} index - 削除するアラームの配列インデックス
+         */
+        function deleteAlarm(index) {
+            const time = alarms[index].time;
+            alarms.splice(index, 1);
+            alarmStatusEl.textContent = `${time}のアラームを削除しました。`;
+            alarmStatusEl.classList.add('text-red-600');
+            alarmStatusEl.classList.remove('text-blue-600');
+            renderAlarms();
+        }
+
+        /**
+         * アラームのチェックを行う（毎秒実行）
+         */
+        function checkAlarms() {
+            const now = new Date();
+            const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const nowSecond = now.getSeconds();
+
+            // 毎分0秒になった瞬間にチェック
+            if (nowSecond === 0) {
+                const pendingAlarms = alarms.filter(a => a.time === nowTime && !a.triggered);
+                
+                if (pendingAlarms.length > 0) {
+                    // アラームをトリガー
+                    pendingAlarms.forEach(alarm => alarm.triggered = true);
+                    triggerAlarm();
+                }
+            }
+        }
+
+        /**
+         * アラームを鳴らす (カスタム音源対応)
+         */
+        function triggerAlarm() {
+            alarmModal.classList.remove('hidden');
+
+            if (customAlarmPlayer && customAlarmPlayer.loaded) {
+                // カスタム音源を使用
+                customAlarmPlayer.start();
+                alarmInterval = null; // デフォルト音源のインターバルは不要
+            } else {
+                // デフォルト音源を使用
+                const playSound = () => {
+                    synth.triggerAttackRelease("C4", "8n");
+                    synth.triggerAttackRelease("G4", "8n", "+4n");
+                };
+                
+                playSound();
+                // 0.5秒ごとに音を鳴らす
+                alarmInterval = setInterval(playSound, 500); 
+            }
+            
+            // モーダルを点滅させる
+            alarmModalContent.classList.add('alarm-ringing');
+        }
+
+        /**
+         * アラームを停止する
+         */
+        dismissAlarmBtn.addEventListener('click', () => {
+            alarmModal.classList.add('hidden');
+            
+            // 1. カスタム音源を停止
+            if (customAlarmPlayer && customAlarmPlayer.state === 'started') {
+                customAlarmPlayer.stop();
+            }
+
+            // 2. デフォルト音源のインターバルを停止
+            if (alarmInterval) {
+                clearInterval(alarmInterval);
+                alarmInterval = null;
+            }
+
+            alarmModalContent.classList.remove('alarm-ringing');
+            
+            // 鳴り終わったアラームをリストから削除
+            alarms = alarms.filter(a => !a.triggered);
+            renderAlarms();
+        });
+
+        // 1秒ごとにアラームチェックを開始
+        alarmCheckInterval = setInterval(checkAlarms, 1000);
+        renderAlarms();
+
+        // --- 3. ストップウォッチ機能 ---
+
+        /**
+         * ストップウォッチの表示を更新する
+         */
+        function updateStopwatchDisplay() {
+            const totalSeconds = swElapsedTime / 1000;
+            swDisplay.textContent = formatTime(totalSeconds, true);
+        }
+
+        /**
+         * ストップウォッチを開始する
+         */
+        swStartBtn.addEventListener('click', () => {
+            if (!swIsRunning) {
+                startAudioContextOnce(); 
+                
+                // 開始時刻を現在時刻から経過時間を引いた値に設定
+                swStartTime = Date.now() - swElapsedTime; 
+                swInterval = setInterval(() => {
+                    swElapsedTime = Date.now() - swStartTime;
+                    updateStopwatchDisplay();
+                }, 10); // 10ミリ秒ごとに更新
+                
+                swIsRunning = true;
+                swStartBtn.classList.add('hidden');
+                swStopBtn.classList.remove('hidden');
+                swResetBtn.disabled = false;
+                swLapBtn.disabled = false;
+            }
+        });
+
+        /**
+         * ストップウォッチを停止する
+         */
+        swStopBtn.addEventListener('click', () => {
+            if (swIsRunning) {
+                clearInterval(swInterval);
+                swIsRunning = false;
+                swStartBtn.classList.remove('hidden');
+                swStopBtn.classList.add('hidden');
+            }
+        });
+
+        /**
+         * ストップウォッチをリセットする
+         */
+        swResetBtn.addEventListener('click', () => {
+            clearInterval(swInterval);
+            swIsRunning = false;
+            swStartTime = 0;
+            swElapsedTime = 0;
+            lapCount = 0;
+            lapTimesList.innerHTML = '';
+            swDisplay.textContent = '00:00.00';
+            
+            swStartBtn.classList.remove('hidden');
+            swStopBtn.classList.add('hidden');
+            swResetBtn.disabled = true;
+            swLapBtn.disabled = true;
+            noLapMessage.classList.remove('hidden');
+        });
+
+        /**
+         * ラップタイムを記録する
+         */
+        swLapBtn.addEventListener('click', () => {
+            if (swIsRunning) {
+                lapCount++;
+                const lapTime = swElapsedTime / 1000;
+                const totalTimeFormatted = formatTime(lapTime, true);
+                
+                const listItem = document.createElement('li');
+                listItem.className = 'flex justify-between py-2 text-sm text-gray-950'; 
+                listItem.innerHTML = `
+                    <span class="text-gray-700">ラップ ${String(lapCount).padStart(2, '0')}</span>
+                    <span class="font-mono text-gray-950">${totalTimeFormatted}</span>
+                `;
+                lapTimesList.prepend(listItem); // 新しいラップを一番上に追加
+                noLapMessage.classList.add('hidden');
+            }
+        });
+
+        // ページロード時にストップウォッチのボタンを初期設定
+        swStartBtn.disabled = false; // 初期状態では開始可能
+
+        // --- 4. タイマー機能 ---
+
+        /**
+         * タイマーの表示を更新する
+         */
+        function updateTimerDisplay() {
+            const totalSeconds = timerRemaining;
+            timerDisplay.textContent = formatTime(totalSeconds);
+
+            // 残り時間が5秒以下になったら文字を赤くする（緊急度を示すためここは赤を維持）
+            if (timerRemaining <= 5 && timerRemaining > 0) {
+                 timerDisplay.classList.remove('text-gray-950');
+                 timerDisplay.classList.add('text-red-600', 'animate-pulse');
+            } else {
+                 // 通常時は黒に戻す
+                 timerDisplay.classList.add('text-gray-950');
+                 timerDisplay.classList.remove('text-red-600', 'animate-pulse');
+            }
+        }
+
+        /**
+         * タイマーの初期設定（入力値からDurationを設定）
+         */
+        function setTimerDurationFromInput() {
+            // 入力値のサニタイズ
+            const h = Math.min(99, Math.max(0, parseInt(timerHInput.value) || 0));
+            const m = Math.min(59, Math.max(0, parseInt(timerMInput.value) || 0));
+            const s = Math.min(59, Math.max(0, parseInt(timerSInput.value) || 0));
+
+            timerHInput.value = h;
+            timerMInput.value = m;
+            timerSInput.value = s;
+
+            timerDuration = h * 3600 + m * 60 + s;
+            timerRemaining = timerDuration;
+            
+            // 0秒設定を回避
+            if (timerDuration <= 0) {
+                timerDuration = 60; // 1分に強制設定
+                timerRemaining = 60;
+                timerMInput.value = 1;
+                timerSInput.value = 0;
+            }
+            
+            updateTimerDisplay();
+        }
+
+        // 入力値が変更されたらDurationを更新
+        [timerHInput, timerMInput, timerSInput].forEach(input => {
+            input.addEventListener('input', setTimerDurationFromInput);
+        });
+        setTimerDurationFromInput(); // 初回設定
+
+        /**
+         * タイマーを開始する
+         */
+        timerStartBtn.addEventListener('click', () => {
+            startAudioContextOnce(); 
+            
+            setTimerDurationFromInput(); // 確実に最新の設定で開始
+
+            if (!timerIsRunning && timerRemaining > 0) {
+                timerIsRunning = true;
+                timerInterval = setInterval(() => {
+                    timerRemaining--;
+                    updateTimerDisplay();
+
+                    if (timerRemaining <= 0) {
+                        clearInterval(timerInterval);
+                        timerIsRunning = false;
+                        triggerTimerEnd();
+                    }
+                }, 1000);
+
+                // UIの切り替え
+                timerStartBtn.classList.add('hidden');
+                timerPauseBtn.classList.remove('hidden');
+                timerResumeBtn.classList.add('hidden');
+                timerResetBtn.disabled = false;
+                toggleTimerInputs(true);
+            }
+        });
+
+        /**
+         * タイマーを一時停止する
+         */
+        timerPauseBtn.addEventListener('click', () => {
+            if (timerIsRunning) {
+                clearInterval(timerInterval);
+                timerIsRunning = false;
+                timerPauseBtn.classList.add('hidden');
+                timerResumeBtn.classList.remove('hidden');
+                toggleTimerInputs(false);
+            }
+        });
+
+        /**
+         * タイマーを再開する
+         */
+        timerResumeBtn.addEventListener('click', () => {
+            if (!timerIsRunning && timerRemaining > 0) {
+                startAudioContextOnce(); 
+
+                timerIsRunning = true;
+                timerInterval = setInterval(() => {
+                    timerRemaining--;
+                    updateTimerDisplay();
+
+                    if (timerRemaining <= 0) {
+                        clearInterval(timerInterval);
+                        timerIsRunning = false;
+                        triggerTimerEnd();
+                    }
+                }, 1000);
+                
+                timerResumeBtn.classList.add('hidden');
+                timerPauseBtn.classList.remove('hidden');
+                toggleTimerInputs(true);
+            }
+        });
+
+
+        /**
+         * タイマーをリセットする
+         */
+        timerResetBtn.addEventListener('click', () => {
+            clearInterval(timerInterval);
+            timerIsRunning = false;
+            timerRemaining = timerDuration;
+            updateTimerDisplay();
+            
+            // UIの切り替え
+            timerStartBtn.classList.remove('hidden');
+            timerPauseBtn.classList.add('hidden');
+            timerResumeBtn.classList.add('hidden');
+            timerResetBtn.disabled = true;
+            toggleTimerInputs(false);
+        });
+        
+        /**
+         * タイマーの入力欄を無効化/有効化する
+         */
+        function toggleTimerInputs(disable) {
+            timerHInput.disabled = disable;
+            timerMInput.disabled = disable;
+            timerSInput.disabled = disable;
+            // 明るいモードに合わせて不透明度を調整
+            timerHInput.classList.toggle('opacity-60', disable);
+            timerMInput.classList.toggle('opacity-60', disable);
+            timerSInput.classList.toggle('opacity-60', disable);
+        }
+
+        /**
+         * タイマー終了時にアラームを鳴らす (カスタム音源対応)
+         */
+        function triggerTimerEnd() {
+            timerModal.classList.remove('hidden');
+            
+            if (customTimerPlayer && customTimerPlayer.loaded) {
+                // カスタム音源を使用
+                customTimerPlayer.start();
+            } else {
+                // デフォルト音源を使用
+                timerSynth.triggerAttackRelease("C4", "1n"); 
+                timerSynth.triggerAttackRelease("G3", "1n", "+0.5"); 
+            }
+            
+            // モーダルが閉じられたらリセット
+            dismissTimerBtn.addEventListener('click', () => {
+                timerModal.classList.add('hidden');
+                // カスタム音源を停止
+                if (customTimerPlayer && customTimerPlayer.state === 'started') {
+                    customTimerPlayer.stop();
+                }
+                timerResetBtn.click(); // リセットボタンを押したのと同じ処理
+            }, { once: true }); // イベントリスナーを一度だけ実行
+
+        }
+    </script>
+</body>
+</html>
