@@ -726,7 +726,7 @@
         [timerHInput, timerMInput, timerSInput].forEach(input => {
             input.addEventListener('input', setTimerDurationFromInput);
         });
-        setTimerDurationFromInput(); // 初回設定
+        setTimerDurationFromInput(true);
 
         /**
          * タイマーを開始する
